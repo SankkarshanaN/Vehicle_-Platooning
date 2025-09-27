@@ -118,7 +118,24 @@
                 <div class="glass-card p-6 rounded-xl">
                     <h3 class="font-semibold mb-4 text-slate-200">Active Vehicles</h3>
                     <div id="activeVehiclesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <!-- Vehicle cards will be injected here by JavaScript -->
+                                               // ...existing code...
+                        card.innerHTML = `
+                            <div class="flex justify-between items-center mb-2">
+                                <h4 class="text-xl font-bold text-white header-title">${data.vehicle_id.replace(/^test_/, '')}</h4>
+                                <span class="font-semibold ${platooningColor}">${platooningText}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-sm text-slate-300">
+                                <div>
+                                    <p>Speed: <span class="font-semibold text-white">${data.speed?.toFixed(1) ?? 'N/A'} km/h</span></p>
+                                    <p>Fuel: <span class="font-semibold text-white">${data.fuel_consumption?.toFixed(2) ?? 'N/A'} L/100km</span></p>
+                                </div>
+                                <div>
+                                    <p>CO₂: <span class="font-semibold text-white">${data.co2_emission?.toFixed(1) ?? 'N/A'} g/km</span></p>
+                                    <p>Score: <span class="font-semibold text-white">${data.efficiency_score?.toFixed(1) ?? 'N/A'}%</span></p>
+                                </div>
+                            </div>
+                        `;
+                        // ...existing code...
                     </div>
                 </div>
             </div>
@@ -314,7 +331,7 @@
             const platooningColor = data.platooning_status ? 'text-amber-400' : 'text-sky-400';
             card.innerHTML = `
                 <div class="flex justify-between items-center mb-2">
-                    <h4 class="text-xl font-bold text-white header-title">${data.vehicle_id}</h4>
+                    <h4 class="text-xl font-bold text-white header-title">${data.vehicle_id.replace(/^test_/, '')}</h4>
                     <span class="font-semibold ${platooningColor}">${platooningText}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-sm text-slate-300">
