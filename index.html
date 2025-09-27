@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Telemetry Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #000; color: #f0f0f0; }
+        .hero-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: 0.3;
+        }
+        .hero-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.4) 0%, rgba(0,0,0,1) 90%); z-index: -1;
+        }
+        .header-title, .hero-title { font-family: 'Orbitron', sans-serif; }
+        .hero-title {
+            text-shadow: 0 0 15px rgba(255, 0, 0, 0.7), 0 0 25px rgba(255, 0, 0, 0.5);
+            animation: flicker 3s infinite alternate;
+        }
+        @keyframes flicker {
+            0%, 18%, 22%, 25%, 53%, 57%, 100% { text-shadow: 0 0 8px #fff, 0 0 15px #fff, 0 0 25px #ff2d2d, 0 0 40px #ff2d2d, 0 0 70px #ff2d2d; }
+            20%, 24%, 55% { text-shadow: none; }
+        }
+        .glass-card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); }
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <video autoplay loop muted playsinline class="hero-bg" id="background-video">
+        <source src="./intro_video.mp4" type="video/mp4">
+    </video>
+    <div class="hero-overlay"></div>
+    <audio id="introAudio" loop>
+        <source src="./f1_car_sound.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="startOverlay" class="fixed inset-0 z-50 bg-black flex flex-col justify-center items-center text-center p-4 cursor-pointer">
+        <h1 class="text-4xl font-bold text-white mb-4 header-title">Welcome</h1>
+        <p class="text-xl text-slate-300 animate-pulse">Click anywhere to begin</p>
+    </div>
+
+    <div id="appContainer" class="min-h-screen flex flex-col opacity-0 transition-opacity duration-1000">
+        <header class="sticky top-0 z-30 w-full py-4 px-6">
+            <div class="max-w-7xl mx-auto flex items-center justify-center relative">
+                <h1 class="header-title text-2xl md:text-3xl font-bold text-white cursor-pointer" id="homeBtn">graVITas'25</h1>
+                <div id="statusIndicator" class="absolute right-0 flex items-center space-x-2 hidden">
+                    <div id="statusDot" class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span id="statusText" class="text-sm font-medium text-slate-300">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <main id="mainContent" class="flex-grow flex flex-col justify-center">
+            <div id="heroSection" class="text-center px-4">
+                <p class="text-red-500 font-semibold tracking-wider">TEAM Seriously_IDK presents</p>
+                <h1 class="hero-title text-5xl md:text-7xl font-bold text-white my-4">VEHICLE PLATOONING</h1>
+                <p class="max-w-3xl mx-auto text-slate-300 text-lg">RL based-Autonomous Vehicle Platooning with Fuel Reduction in CARLA</p>
+                <div class="mt-12 space-x-4">
+                    <button id="dashboardBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105">Live Dashboard</button>
+                    <button id="techStackBtn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105">Technology Stack</button>
+                </div>
+            </div>
+
+            <div id="dashboardSection" class="hidden max-w-7xl mx-auto w-full p-4">
+                <!-- KPIs -->
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+                     <div class="glass-card p-4 rounded-lg"><p class="text-sm text-slate-400">Active Vehicles</p><p id="totalVehicles" class="text-2xl font-bold text-white">0</p></div>
+                    <div class="glass-card p-4 rounded-lg"><p class="text-sm text-slate-400">Avg Speed</p><p id="avgSpeed" class="text-2xl font-bold text-white">0 km/h</p></div>
+                    <div class="glass-card p-4 rounded-lg"><p class="text-sm text-slate-400">Avg Fuel Use</p><p id="avgFuel" class="text-2xl font-bold text-white">0 L/100km</p></div>
+                    <div class="glass-card p-4 rounded-lg"><p class="text-sm text-slate-400">Platooning Ratio</p><p id="platoonRatio" class="text-2xl font-bold text-white">0%</p></div>
+                    <div class="glass-card p-4 rounded-lg col-span-2 lg:col-span-1"><p class="text-sm text-slate-400">Avg CO2</p><p id="avgCo2" class="text-2xl font-bold text-white">0 g/km</p></div>
+                </div>
+                <!-- Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="glass-card p-6 rounded-xl"><h3 class="font-semibold text-slate-200">Fleet Speed & Fuel</h3><div style="height:40vh;"><canvas id="speedFuelChart"></canvas></div></div>
+                    <div class="glass-card p-6 rounded-xl"><h3 class="font-semibold text-slate-200">Platooning Status</h3><div style="height:40vh; max-width: 320px; margin: auto;"><canvas id="platooningChart"></canvas></div></div>
+                </div>
+                <!-- NEW: Active Vehicles Section -->
+                <div class="glass-card p-6 rounded-xl">
+                    <h3 class="font-semibold mb-4 text-slate-200">Active Vehicles</h3>
+                    <div id="activeVehiclesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Vehicle cards will be injected here by JavaScript -->
+                    </div>
+                </div>
+            </div>
+            
+            <div id="techStackSection" class="hidden max-w-4xl mx-auto w-full p-4">
+                 <!-- Tech stack content will be added here if needed -->
+            </div>
+        </main>
+    </div>
+
+<script>
+    // --- DOM Elements ---
+    const startOverlay = document.getElementById('startOverlay');
+    const appContainer = document.getElementById('appContainer');
+    const introAudio = document.getElementById('introAudio');
+    const homeBtn = document.getElementById('homeBtn');
+    const dashboardBtn = document.getElementById('dashboardBtn');
+    const techStackBtn = document.getElementById('techStackBtn');
+    const heroSection = document.getElementById('heroSection');
+    const dashboardSection = document.getElementById('dashboardSection');
+    const techStackSection = document.getElementById('techStackSection');
+    const statusIndicator = document.getElementById('statusIndicator').parentElement;
+    
+    // --- WebSocket and Data State ---
+    let socket;
+    let vehicleData = new Map(); // Use a Map to store data for each vehicle
+    let charts = {};
+    const MAX_CHART_POINTS = 50;
+
+    // --- Chart.js Dark Theme ---
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = 'rgba(51, 65, 85, 0.5)';
+
+    // --- Initial Setup ---
+    startOverlay.addEventListener('click', () => {
+        startOverlay.classList.add('opacity-0');
+        setTimeout(() => startOverlay.style.display = 'none', 500);
+        appContainer.classList.remove('opacity-0');
+        introAudio.volume = 0.3;
+        introAudio.play().catch(e => console.warn("Audio playback failed:", e));
+    }, { once: true });
+
+    // --- Navigation ---
+    const showSection = (sectionToShow) => {
+        heroSection.classList.add('hidden');
+        dashboardSection.classList.add('hidden');
+        techStackSection.classList.add('hidden');
+        sectionToShow.classList.remove('hidden');
+        statusIndicator.classList.toggle('hidden', sectionToShow !== dashboardSection);
+    };
+    dashboardBtn.addEventListener('click', () => {
+        showSection(dashboardSection);
+        if (!socket || socket.readyState > 1) {
+            initializeDashboard();
+            connectWebSocket();
+        }
+    });
+    techStackBtn.addEventListener('click', () => showSection(techStackSection));
+    homeBtn.addEventListener('click', () => showSection(heroSection));
+
+    // --- WebSocket Connection ---
+    function connectWebSocket() {
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}`;
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+            statusDot.className = 'w-3 h-3 rounded-full bg-green-500 animate-pulse';
+            statusText.textContent = 'Live';
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                const newData = JSON.parse(event.data);
+                // Handle both single vehicle object and array of vehicles
+                const vehicles = Array.isArray(newData.vehicles) ? newData.vehicles : [newData];
+                
+                vehicles.forEach(vehicle => {
+                    if (typeof vehicle === 'object' && vehicle !== null && vehicle.vehicle_id) {
+                        vehicleData.set(vehicle.vehicle_id, vehicle); // Store/update data for this vehicle
+                    }
+                });
+                updateDashboard();
+
+            } catch (error) {
+                console.error('[Client] Error parsing data:', error);
+            }
+        };
+
+        socket.onclose = () => {
+            statusDot.className = 'w-3 h-3 rounded-full bg-red-500';
+            statusText.textContent = 'Disconnected';
+        };
+        socket.onerror = (error) => {
+            statusDot.className = 'w-3 h-3 rounded-full bg-red-500';
+            statusText.textContent = 'Error';
+        };
+    }
+
+    // --- Dashboard Logic ---
+    function initializeDashboard() {
+        if (charts.speedFuelChart) {
+            Object.values(charts).forEach(chart => chart.destroy());
+        }
+        createCharts();
+    }
+    
+    function updateDashboard() {
+        const allData = Array.from(vehicleData.values()); // Get an array of all current vehicle data
+        if (allData.length === 0) return;
+
+        // 1. Update KPIs
+        const totalRecords = allData.length;
+        const sumSpeed = allData.reduce((sum, d) => sum + (d.speed || 0), 0);
+        const sumFuel = allData.reduce((sum, d) => sum + (d.fuel_consumption || 0), 0);
+        const sumCo2 = allData.reduce((sum, d) => sum + (d.co2_emission || 0), 0);
+        const platoonCount = allData.filter(d => d.platooning_status === true).length;
+        
+        document.getElementById('totalVehicles').textContent = totalRecords;
+        document.getElementById('avgSpeed').textContent = `${(sumSpeed / totalRecords).toFixed(1)} km/h`;
+        document.getElementById('avgFuel').textContent = `${(sumFuel / totalRecords).toFixed(2)} L/100km`;
+        document.getElementById('avgCo2').textContent = `${(sumCo2 / totalRecords).toFixed(2)} g/km`;
+        document.getElementById('platoonRatio').textContent = `${((platoonCount / totalRecords) * 100).toFixed(0)}%`;
+
+        // 2. Update Charts
+        const avgSpeed = sumSpeed / totalRecords;
+        const avgFuel = sumFuel / totalRecords;
+        const newLabel = new Date().toLocaleTimeString();
+        
+        charts.speedFuelChart.data.labels.push(newLabel);
+        charts.speedFuelChart.data.datasets[0].data.push(avgSpeed);
+        charts.speedFuelChart.data.datasets[1].data.push(avgFuel);
+        if (charts.speedFuelChart.data.labels.length > MAX_CHART_POINTS) {
+            charts.speedFuelChart.data.labels.shift();
+            charts.speedFuelChart.data.datasets.forEach(dataset => dataset.data.shift());
+        }
+        charts.speedFuelChart.update();
+
+        charts.platooningChart.data.datasets[0].data = [platoonCount, totalRecords - platoonCount];
+        charts.platooningChart.update();
+
+        // 3. Update Active Vehicle Cards
+        const container = document.getElementById('activeVehiclesContainer');
+        allData.forEach(data => {
+            let card = document.getElementById(`vehicle-${data.vehicle_id}`);
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `vehicle-${data.vehicle_id}`;
+                card.className = 'glass-card p-4 rounded-lg animate-fade-in-up';
+                container.appendChild(card);
+            }
+
+            const platooningText = data.platooning_status ? 'Platooning' : 'Solo';
+            const platooningColor = data.platooning_status ? 'text-amber-400' : 'text-sky-400';
+
+            card.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-xl font-bold text-white header-title">${data.vehicle_id}</h4>
+                    <span class="font-semibold ${platooningColor}">${platooningText}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm text-slate-300">
+                    <div>
+                        <p>Speed: <span class="font-semibold text-white">${data.speed?.toFixed(1) ?? 'N/A'} km/h</span></p>
+                        <p>Fuel: <span class="font-semibold text-white">${data.fuel_consumption?.toFixed(2) ?? 'N/A'} L/100km</span></p>
+                    </div>
+                    <div>
+                        <p>CO₂: <span class="font-semibold text-white">${data.co2_emission?.toFixed(1) ?? 'N/A'} g/km</span></p>
+                        <p>Score: <span class="font-semibold text-white">${data.efficiency_score?.toFixed(1) ?? 'N/A'}%</span></p>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    function createCharts() {
+        const sharedOptions = { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { labels: { color: '#e2e8f0' } } } };
+        charts.speedFuelChart = new Chart(document.getElementById('speedFuelChart'), { type: 'line', data: { labels: [], datasets: [ { label: 'Avg Speed (km/h)', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.2)', yAxisID: 'y', tension: 0.4, fill: true }, { label: 'Avg Fuel (L/100km)', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.2)', yAxisID: 'y1', tension: 0.4 } ] }, options: { ...sharedOptions, scales: { x: { ticks: { maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 7 } }, y: { position: 'left', title: { display: true, text: 'Avg Speed' } }, y1: { position: 'right', title: { display: true, text: 'Avg Fuel' }, grid: { drawOnChartArea: false } } } } });
+        charts.platooningChart = new Chart(document.getElementById('platooningChart'), { type: 'doughnut', data: { labels: ['Platooning', 'Not Platooning'], datasets: [{ data: [0, 0], backgroundColor: ['#f59e0b', '#475569'], borderColor: '#0f172a', hoverOffset: 8 }] }, options: sharedOptions });
+    }
+</script>
+</body>
+</html>
+
