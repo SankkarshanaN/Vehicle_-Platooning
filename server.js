@@ -126,7 +126,7 @@ wss.on('connection', ws => {
         testDataInterval = setInterval(() => {
             const testData = {
                 timestamp: new Date().toISOString(),
-                vehicle_id: `test_${Math.floor(Math.random() * 100)}`,
+                vehicle_id: `${Math.floor(Math.random() * 100)}`,
                 speed: 45 + Math.random() * 30,
                 fuel_consumption: 6 + Math.random() * 4,
                 co2_emission: 150 + Math.random() * 100,
