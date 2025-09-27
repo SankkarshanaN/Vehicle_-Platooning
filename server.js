@@ -1,62 +1,42 @@
 const WebSocket = require('ws');
 const http = require('http');
-const fs = require('fs'); // Corrected import
-const path = require('path'); // Corrected import
+const fs = require('fs');
+const path = require('path');
 
 // --- Configuration ---
 const port = process.env.PORT || 8080;
-let testDataInterval = null; // To hold our test data generator
+let testDataInterval = null;
+
+// --- Fleet Simulation for Test Data (with numerical IDs) ---
+const testVehicleFleet = {
+    '30': { vehicle_id: '30', speed: 65, fuel_consumption: 7.2, platooning_status: true, efficiency_score: 88, co2_emission: 166 },
+    '33': { vehicle_id: '33', speed: 64, fuel_consumption: 7.1, platooning_status: true, efficiency_score: 91, co2_emission: 164 },
+    '45': { vehicle_id: '45', speed: 80, fuel_consumption: 8.9, platooning_status: false, efficiency_score: 75, co2_emission: 205 },
+    '51': { vehicle_id: '51', speed: 0, fuel_consumption: 0.5, platooning_status: false, efficiency_score: 99, co2_emission: 11.5 }
+};
 
 // Create an HTTP server
 const server = http.createServer((req, res) => {
-    // Handle CORS preflight requests
-    if (req.method === 'OPTIONS') {
-        res.writeHead(200, {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
-        });
-        res.end();
-        return;
-    }
-
     // --- Data Endpoint for CARLA ---
     if (req.method === 'POST' && req.url === '/data') {
         let body = '';
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', () => {
             try {
-                const newDataRow = JSON.parse(body);
-                console.log('[Server] Received data from simulation:', newDataRow);
+                const data = JSON.parse(body);
+                console.log('[Server] Received real data from simulation:', data);
                 
-                // When real data is received, stop the test data generator if it's running
                 if (testDataInterval) {
                     clearInterval(testDataInterval);
                     testDataInterval = null;
                     console.log('[Server] Real data received, stopping test data generator.');
                 }
 
-                // Ensure the data has the required fields
-                const formattedData = {
-                    timestamp: new Date().toISOString(),
-                    vehicle_id: newDataRow.vehicle_id || newDataRow.id || 'unknown',
-                    speed: parseFloat(newDataRow.speed) || 0,
-                    fuel_consumption: parseFloat(newDataRow.fuel_consumption) || 0,
-                    co2_emission: parseFloat(newDataRow.co2_emission) || 0,
-                    platooning_status: Boolean(newDataRow.platooning_status),
-                    platoon_size: parseInt(newDataRow.platoon_size) || 1,
-                    acceleration: parseFloat(newDataRow.acceleration) || 0,
-                    distance_to_leader: parseFloat(newDataRow.distance_to_leader) || 0,
-                    efficiency_score: parseFloat(newDataRow.efficiency_score) || 0,
-                    current_lane: parseInt(newDataRow.current_lane) || 1
-                };
-
-                // Broadcast the formatted data to all connected dashboard clients
+                const vehicles = Array.isArray(data.vehicles) ? data.vehicles : [data];
+                
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(formattedData));
+                        client.send(JSON.stringify({ vehicles }));
                     }
                 });
                 
@@ -68,98 +48,76 @@ const server = http.createServer((req, res) => {
                 res.end(JSON.stringify({ status: 'error', message: 'Invalid JSON' }));
             }
         });
-        return; // End execution for this endpoint
+        return;
     }
 
     // --- Static File Serving for Frontend ---
     let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
     let extname = String(path.extname(filePath)).toLowerCase();
     let mimeTypes = {
-        '.html': 'text/html',
-        '.js': 'text/javascript',
-        '.css': 'text/css',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml',
-        '.wav': 'audio/wav',
-        '.mp4': 'video/mp4',
-        '.mp3': 'audio/mpeg',
+        '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+        '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpg',
+        '.svg': 'image/svg+xml', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
     };
-
     let contentType = mimeTypes[extname] || 'application/octet-stream';
 
     fs.readFile(filePath, (error, content) => {
         if (error) {
-            if(error.code == 'ENOENT') {
-                res.writeHead(404, { 'Content-Type': 'text/html' });
-                res.end('<h1>404 Not Found</h1>', 'utf-8');
-            } else {
-                res.writeHead(500);
-                res.end('Sorry, check with the site admin for error: '+error.code+' ..\n');
-            }
+            res.writeHead(404, { 'Content-Type': 'text/html' });
+            res.end('<h1>404 Not Found</h1>', 'utf-8');
         } else {
             res.writeHead(200, { 'Content-Type': contentType });
             res.end(content, 'utf-8');
         }
     });
-
 });
 
-// Attach the WebSocket server to the HTTP server
+// Attach the WebSocket server
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', ws => {
-    console.log(`[Server] New WebSocket connection. Total clients: ${wss.clients.size}`);
+    console.log(`[Server] New client connected. Total clients: ${wss.clients.size}`);
 
-    // Send immediate confirmation to the new client
-    ws.send(JSON.stringify({
-        type: 'connection',
-        status: 'connected',
-        timestamp: new Date().toISOString()
-    }));
-
-    // If this is the first client and test data isn't running, start it.
     if (!testDataInterval && wss.clients.size === 1) {
         console.log('[Server] First client connected. Starting test data generator.');
         testDataInterval = setInterval(() => {
-            const testData = {
-                timestamp: new Date().toISOString(),
-                vehicle_id: `${Math.floor(Math.random() * 100)}`,
-                speed: 45 + Math.random() * 30,
-                fuel_consumption: 6 + Math.random() * 4,
-                co2_emission: 150 + Math.random() * 100,
-                platooning_status: Math.random() > 0.5, // Use boolean for consistency
-                platoon_size: Math.floor(Math.random() * 5) + 1,
-                acceleration: (Math.random() - 0.5) * 2,
-                distance_to_leader: Math.random() * 20,
-                efficiency_score: 50 + Math.random() * 50,
-                current_lane: Math.floor(Math.random() * 3) + 1
-            };
+            const vehicleIds = Object.keys(testVehicleFleet);
+            const vehiclesToSend = vehicleIds.map(id => {
+                const vehicle = testVehicleFleet[id];
+                // Simulate realistic changes
+                vehicle.speed += (Math.random() - 0.5) * 4;
+                if (vehicle.speed < 0) vehicle.speed = 0;
+                if (vehicle.speed > 0) {
+                    vehicle.fuel_consumption = 3 + (vehicle.speed / 10) + (Math.random() - 0.5);
+                } else {
+                    vehicle.fuel_consumption = 0.5;
+                }
+                vehicle.co2_emission = vehicle.fuel_consumption * 23.1;
+                vehicle.efficiency_score += (Math.random() - 0.5) * 2;
+                if(vehicle.efficiency_score > 100) vehicle.efficiency_score = 100;
+                if(vehicle.efficiency_score < 50) vehicle.efficiency_score = 50;
 
-            // Send test data to all connected clients
+                return { ...vehicle }; // Return a copy
+            });
+            
+            const payload = JSON.stringify({ vehicles: vehiclesToSend });
             wss.clients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(testData));
+                    client.send(payload);
                 }
             });
-        }, 3000); // Every 3 seconds
+        }, 2000); // Send updates for the whole fleet every 2 seconds
     }
 
     ws.on('close', () => {
         console.log(`[Server] Client disconnected. Remaining: ${wss.clients.size}`);
-        // If no clients are left, stop the test data generator to save resources
         if (wss.clients.size === 0 && testDataInterval) {
             clearInterval(testDataInterval);
             testDataInterval = null;
             console.log('[Server] Last client disconnected. Stopped test data generator.');
         }
     });
-
-    ws.on('error', (error) => {
-        console.error('[Server] WebSocket error:', error);
-    });
+    ws.on('error', (error) => console.error('[Server] WebSocket error:', error));
 });
 
 server.listen(port, () => {
